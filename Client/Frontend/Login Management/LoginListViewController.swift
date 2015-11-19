@@ -5,14 +5,23 @@
 import Foundation
 import UIKit
 import SnapKit
+import Storage
 
-class LoginListViewController: UITableViewController {
-
-    private let SearchHeaderIdentifier = "SearchHeader"
+class LoginListViewController: UIViewController {
 
     private var loginDataSource: LoginCursorDataSource? = nil
 
     private let profile: Profile
+
+    private let searchView: UIView = {
+        let view = UIView()
+        view.backgroundColor = UIColor.redColor()
+        return view
+    }()
+
+    private lazy var tableView: UITableView = {
+        return UITableView()
+    }()
 
     init(profile: Profile) {
         self.profile = profile
@@ -25,38 +34,48 @@ class LoginListViewController: UITableViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+
         self.title = NSLocalizedString("Logins", comment: "Title for Logins List View screen")
         loginDataSource = LoginCursorDataSource(tableView: self.tableView)
+
+        view.addSubview(searchView)
+        view.addSubview(tableView)
+
+        
+        searchView.snp_makeConstraints { make in
+            make.top.left.right.equalTo(self.view)
+            make.height.equalTo(44)
+        }
+
+        tableView.snp_makeConstraints { make in
+            make.top.equalTo(searchView.snp_bottom)
+            make.left.right.bottom.equalTo(self.view)
+        }
     }
 
     override func viewWillAppear(animated: Bool) {
         super.viewWillAppear(animated)
-
-        tableView.registerClass(SearchViewTableViewHeader.self, forHeaderFooterViewReuseIdentifier: SearchHeaderIdentifier)
         tableView.dataSource = loginDataSource
         tableView.reloadData()
     }
 }
 
-// MARK: - UITableViewDelegate Overrides
-extension LoginListViewController {
-
-    override func tableView(tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
-        guard section == 0 else { return nil }
-        let searchHeader = tableView.dequeueReusableHeaderFooterViewWithIdentifier(SearchHeaderIdentifier) as! SearchViewTableViewHeader
-        return searchHeader
-    }
-
-    override func tableView(tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
-        guard section == 0 else { return 0 }
-        return 44
-    }
-}
-
+/// Data source for handling LoginData objects from a Cursor
 private class LoginCursorDataSource: NSObject, UITableViewDataSource {
+
     unowned var tableView: UITableView
 
     private let LoginCellIdentifier = "LoginCell"
+
+    private let data = [
+        Login.createWithHostname("alphabet.com", username: "A@mozilla.com", password: "password1"),
+        Login.createWithHostname("amazon.com", username: "AB@mozilla.com", password: "password1"),
+        Login.createWithHostname("canada.com", username: "ABC@mozilla.com", password: "password1"),
+        Login.createWithHostname("detroit.com", username: "C@mozilla.com", password: "password1"),
+        Login.createWithHostname("hannover.com", username: "D@mozilla.com", password: "password1"),
+        Login.createWithHostname("zoolander.com", username: "Z@mozilla.com", password: "password1"),
+        Login.createWithHostname("zombo.com", username: "ZZ@mozilla.com", password: "password1")
+    ]
 
     init(tableView: UITableView) {
         self.tableView = tableView
@@ -64,32 +83,49 @@ private class LoginCursorDataSource: NSObject, UITableViewDataSource {
         self.tableView.registerClass(UITableViewCell.self, forCellReuseIdentifier: LoginCellIdentifier)
     }
 
+    @objc func numberOfSectionsInTableView(tableView: UITableView) -> Int {
+        return sectionIndexTitlesForTableView(tableView)?.count ?? 0
+    }
+
     @objc func tableView(tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        return 0
+        return loginsForSection(section).count
     }
 
     @objc func tableView(tableView: UITableView, cellForRowAtIndexPath indexPath: NSIndexPath) -> UITableViewCell {
-        return tableView.dequeueReusableCellWithIdentifier(LoginCellIdentifier, forIndexPath: indexPath)
+        let cell = tableView.dequeueReusableCellWithIdentifier(LoginCellIdentifier, forIndexPath: indexPath)
+
+        let login = loginsForSection(indexPath.section)[indexPath.row]
+        cell.textLabel?.text = login.hostname
+        return cell
     }
-}
 
-private class SearchViewTableViewHeader: UITableViewHeaderFooterView {
-
-    private let searchView: UIView = {
-        let view = UIView()
-        view.backgroundColor = UIColor.redColor()
-        return view
-    }()
-
-    override init(reuseIdentifier: String?) {
-        super.init(reuseIdentifier: reuseIdentifier)
-        contentView.addSubview(searchView)
-        searchView.snp_makeConstraints { make in
-            make.edges.equalTo(contentView)
+    @objc func sectionIndexTitlesForTableView(tableView: UITableView) -> [String]? {
+        var firstHostnameCharacters = [Character]()
+        data.forEach { login in
+            let firstChar = login.hostname[login.hostname.startIndex]
+            if !firstHostnameCharacters.contains(firstChar) {
+                firstHostnameCharacters.append(firstChar)
+            }
         }
+        return firstHostnameCharacters.map { String($0) }
     }
 
-    required init?(coder aDecoder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+    @objc func tableView(tableView: UITableView, sectionForSectionIndexTitle title: String, atIndex index: Int) -> Int {
+        guard let titles = sectionIndexTitlesForTableView(tableView) where index < titles.count && index >= 0 else {
+            return 0
+        }
+        return titles.indexOf(title) ?? 0
+    }
+
+    @objc func tableView(tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+        return sectionIndexTitlesForTableView(tableView)?[section]
+    }
+
+    private func loginsForSection(section: Int) -> [LoginData] {
+        guard let sectionTitles = sectionIndexTitlesForTableView(tableView) else {
+            return []
+        }
+        let titleForSectionAtIndex = sectionTitles[section]
+        return data.filter { $0.hostname.startsWith(titleForSectionAtIndex) }
     }
 }
