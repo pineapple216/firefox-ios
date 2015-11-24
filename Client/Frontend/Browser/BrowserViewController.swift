@@ -1574,8 +1574,13 @@ extension BrowserViewController: WKNavigationDelegate {
             callExternal(url)
             decisionHandler(WKNavigationActionPolicy.Cancel)
         default:
+            // If this is a scheme that we don't know how to handle, see if an external app
+            // can handle it. If not then we show an error page. In either case we cancel
+            // the request so that the webview does not see it.
             if UIApplication.sharedApplication().canOpenURL(url) {
                 openExternal(url)
+            } else {
+                ErrorPageHelper().showPage(NSError(domain: kCFErrorDomainCFNetwork as String, code: Int(CFNetworkErrors.CFErrorHTTPBadURL.rawValue), userInfo: [:]), forUrl: url, inWebView: webView)
             }
             decisionHandler(WKNavigationActionPolicy.Cancel)
         }
@@ -1678,12 +1683,29 @@ extension BrowserViewController: WKNavigationDelegate {
     }
 }
 
+/// List of schemes that are allowed to open a popup window
+private let SchemesAllowedToOpenPopups = ["http", "https", "javascript", "data"]
+
 extension BrowserViewController: WKUIDelegate {
     func webView(webView: WKWebView, createWebViewWithConfiguration configuration: WKWebViewConfiguration, forNavigationAction navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-
         guard let currentTab = tabManager.selectedTab else { return nil }
 
         screenshotHelper.takeScreenshot(currentTab)
+
+        // Only allow a limited set of URLs to open in new windows. In case of a bad/invalid URL, we open a new tab
+        // with the URL but without the WKConfiguration. That makes it standalone and not connected to the frame that
+        // is opening it. So there is no JavaScript access possible.
+
+        guard let scheme = navigationAction.request.URL?.scheme.lowercaseString where SchemesAllowedToOpenPopups.contains(scheme) else {
+            let newTab: Browser
+            if #available(iOS 9, *) {
+                newTab = tabManager.addTab(navigationAction.request, isPrivate: currentTab.isPrivate)
+            } else {
+                newTab = tabManager.addTab(navigationAction.request)
+            }
+            tabManager.selectTab(newTab)
+            return nil
+        }
 
         // If the page uses window.open() or target="_blank", open the page in a new tab.
         // TODO: This doesn't work for window.open() without user action (bug 1124942).
